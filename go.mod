@@ -9,4 +9,5 @@ require (
 	github.com/mitchellh/cli v1.1.2
 	github.com/russross/blackfriday v1.6.0
 	github.com/zclconf/go-cty v1.7.1
+	golang.org/x/net v0.0.0-20200301022130-244492dfa37a
 )

@@ -51,11 +51,19 @@ func initCommands(ui cli.Ui) map[string]cli.CommandFactory {
 		}, nil
 	}
 
+	serveFactory := func() (cli.Command, error) {
+		return &serveCmd{
+			commonCmd: commonCmd{
+				ui: ui,
+			},
+		}, nil
+	}
+
 	return map[string]cli.CommandFactory{
 		"":         defaultFactory,
 		"generate": generateFactory,
 		"validate": validateFactory,
-		//"serve": serveFactory,
+		"serve":    serveFactory,
 	}
 }
 
