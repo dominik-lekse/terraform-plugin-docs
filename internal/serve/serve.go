@@ -2,9 +2,13 @@ package serve
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"html/template"
 	"io"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -31,7 +35,25 @@ type Page struct {
 	Path    string `json:"path"`
 }
 
-func FetchDocPreviewPage() (io.Reader, error) {
+func Handle(w http.ResponseWriter, r *http.Request) {
+	var err error
+	if r.RequestURI == "/tools/doc-preview" {
+		err = getDocPreviewPage(w)
+	} else if r.RequestURI == "/markdown/menu" {
+		err = getSidebarMenu(w)
+	} else if strings.HasPrefix(r.RequestURI, "/markdown") {
+		err = getMarkdownContent(w, r.RequestURI)
+	} else {
+		proxyRequest(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+}
+
+func fetchDocPreviewPage() (io.Reader, error) {
 	get, err := http.Get(website)
 	if err != nil {
 		return nil, err
@@ -60,69 +82,7 @@ func injectScriptIntoPage(body io.Reader) (io.Reader, error) {
 				Type: html.ElementNode,
 				Data: "script",
 				FirstChild: &html.Node{
-					// TODO this content should come from the js file
-					Data: `
-let fetchContent = (u) => {
-    fetch("/markdown/" + u)
-        .then(r => r.json())
-        .then(r => {
-            document.getElementById("ember21").value = r.content // TODO shouldn't bake in the ID
-            document.getElementById("ember21").dispatchEvent(new Event("input", {"bubbles": true}))
-        })
-
-    document.getElementById("ember21").style.display = "none"
-}
-
-let updateMenu = (n) => {
-    fetch("/markdown/menu")
-        .then(r => r.text())
-        .then(r => {
-            n.innerHTML = r
-        })
-}
-
-let textArea = new MutationObserver((mutations, ob) => {
-    mutations.forEach((mutation) => {
-        if (!mutation.addedNodes) return
-
-        for (let i = 0; i < mutation.addedNodes.length; i++) {
-            // do things to your newly added nodes here
-            let node = mutation.addedNodes[i]
-            if (node.nodeName === "TEXTAREA") { // TODO is this smart enough?
-                fetchContent("docs/index.md") // TODO this shouldn't be hard coded
-                ob.disconnect()
-            }
-        }
-    })
-})
-let menu = new MutationObserver((mutations, ob) => {
-    mutations.forEach((mutation) => {
-        if (!mutation.addedNodes) return
-
-        for (let i = 0; i < mutation.addedNodes.length; i++) {
-            // do things to your newly added nodes here
-            let node = mutation.addedNodes[i]
-            if (node.nodeName === "DIV" && node.getAttribute("class") === "provider-docs-menu") {
-                updateMenu(node)
-                ob.disconnect()
-            }
-        }
-    })
-})
-
-textArea.observe(document.body, {
-    childList: true
-    , subtree: true
-    , attributes: false
-    , characterData: false
-})
-menu.observe(document.body, {
-    childList: true
-    , subtree: true
-    , attributes: false
-    , characterData: false
-})
-`,
+					Data: serveJs,
 					Type: html.TextNode,
 				},
 			}
@@ -144,7 +104,7 @@ menu.observe(document.body, {
 	return &buffer, nil
 }
 
-func GenerateMenu() (*Menu, error) {
+func generateMenu() (*Menu, error) {
 	menu := &Menu{}
 	err := filepath.Walk("./docs", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -158,7 +118,7 @@ func GenerateMenu() (*Menu, error) {
 			return nil
 		}
 
-		page, err := ReadPage(path)
+		page, err := readPage(path)
 		if err != nil {
 			return err
 		}
@@ -180,9 +140,12 @@ func GenerateMenu() (*Menu, error) {
 	return menu, nil
 }
 
-// TODO ensure file is of correct type
-func ReadPage(path string) (*Page, error) {
+func readPage(path string) (*Page, error) {
 	path = filepath.Clean(path)
+
+	if !strings.HasSuffix(path, ".md") {
+		return nil, errors.New("request for page should have markdown extension")
+	}
 
 	if !strings.HasPrefix(path, "docs") {
 		return nil, errors.New("request for page outside of docs folder")
@@ -214,4 +177,71 @@ func extractLayout(content string) string {
 	}
 
 	return strings.TrimPrefix(strings.TrimSuffix(strings.TrimSpace(groups[1]), `"`), `"`)
+}
+
+func getDocPreviewPage(w http.ResponseWriter) error {
+	page, err := fetchDocPreviewPage()
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "text/html")
+	if _, err := io.Copy(w, page); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func proxyRequest(w http.ResponseWriter, r *http.Request) {
+	websiteUrl, err := url.Parse(website)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	rp := &httputil.ReverseProxy{
+		// Flush immediately after each write to the client
+		FlushInterval: -1,
+		Transport:     http.DefaultTransport,
+		Director: func(req *http.Request) {
+			req.Host = websiteUrl.Host
+			req.URL.Scheme = websiteUrl.Scheme
+			req.URL.Host = websiteUrl.Host
+		},
+	}
+
+	rp.ServeHTTP(w, r)
+}
+
+func getSidebarMenu(w http.ResponseWriter) error {
+	menu, err := generateMenu()
+	if err != nil {
+		return err
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+
+	t, err := template.New("menu").Parse(menuTemplate)
+	if err != nil {
+		return err
+	}
+	err = t.Execute(w, menu)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func getMarkdownContent(w http.ResponseWriter, path string) error {
+	page, err := readPage(strings.TrimPrefix(path, "/markdown/"))
+	if err != nil {
+		return err
+	}
+
+	w.Header().Set("Content-Type", "text/javascript")
+	if err := json.NewEncoder(w).Encode(page); err != nil {
+		return err
+	}
+
+	return nil
 }

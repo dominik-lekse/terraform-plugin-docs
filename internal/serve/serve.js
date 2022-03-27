@@ -2,11 +2,12 @@ let fetchContent = (u) => {
     fetch("/markdown/" + u)
         .then(r => r.json())
         .then(r => {
-            document.getElementById("ember21").value = r.content // TODO shouldn't bake in the ID
-            document.getElementById("ember21").dispatchEvent(new Event("input", {"bubbles": true}))
+            let mdtextarea = document.querySelector('div.doc-preview textarea')
+            mdtextarea.value = r.content
+            mdtextarea.dispatchEvent(new Event("input", {"bubbles": true}))
         })
 
-    document.getElementById("ember21").style.display = "none"
+    document.querySelector('div.doc-preview textarea').style.display = "none"
 }
 
 let updateMenu = (n) => {
