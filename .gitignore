@@ -16,5 +16,6 @@ tfproviderdocsgen
 # OS generated files
 .DS_Store
 
-# IDE files
+# JetBrains IDEs files
 .idea/
+*.iws
