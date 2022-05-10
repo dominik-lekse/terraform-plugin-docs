@@ -125,7 +125,6 @@ func generateMenu() (*Menu, error) {
 		}
 
 		if path == "docs/index.md" {
-			page.Name = extractLayout(page.Content)
 			menu.Index = page
 		} else if strings.HasPrefix(path, "docs/guides/") {
 			menu.Guides = append(menu.Guides, page)
