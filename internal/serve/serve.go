@@ -25,6 +25,7 @@ var layout = regexp.MustCompile("(?ims)---\\n(?:.*\\n)?layout:([^\\n]*).*---\\n"
 
 type Menu struct {
 	Index     *Page
+	Guides    []*Page
 	Data      []*Page
 	Resources []*Page
 }
@@ -126,6 +127,8 @@ func generateMenu() (*Menu, error) {
 		if path == "docs/index.md" {
 			page.Name = extractLayout(page.Content)
 			menu.Index = page
+		} else if strings.HasPrefix(path, "docs/guides/") {
+			menu.Guides = append(menu.Guides, page)
 		} else if strings.HasPrefix(path, "docs/resources/") {
 			menu.Resources = append(menu.Resources, page)
 		} else if strings.HasPrefix(path, "docs/data-sources/") {

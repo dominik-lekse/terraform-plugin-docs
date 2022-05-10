@@ -4,6 +4,23 @@
         <div>
             <li class="menu-list-link"><a onclick="fetchContent('{{.Index.Path}}')" class="active">{{.Index.Name}}</a></li>
         </div>
+        {{ if .Guides }}
+            <div class="menu-list-category-wrapper expanded"><div>
+                    <li class="menu-list-category">
+                        <a class="menu-list-category-link">
+                            <i class="fa fa-angle-down"></i>
+                            <span class="menu-list-category-link-title">Guides</span>
+                        </a>
+                        <ul class="menu-list">
+                            {{range .Guides}}
+                                <div><li class="menu-list-link">
+                                        <a onclick="fetchContent('{{.Path}}')">
+                                            {{.Name}}
+                                        </a>
+                                    </li></div>
+                            {{end}}
+                        </ul></li></div></div>
+        {{ end }}
         {{ if .Resources }}
             <div class="menu-list-category-wrapper expanded"><div>
                     <li class="menu-list-category">
