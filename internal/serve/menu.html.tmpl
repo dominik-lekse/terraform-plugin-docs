@@ -2,7 +2,7 @@
 <div class="provider-docs-menu-content">
     <ul class="provider-docs-menu-list menu-list">
         <div>
-            <li class="menu-list-link"><a onclick="fetchContent('{{.Index.Path}}')" class="active">{{.Index.Name}}</a></li>
+            <li class="menu-list-link"><a onclick="fetchContent('{{.Index.Path}}')" class="active">{{ if .Index.Title }}{{.Index.Title}}{{else}}{{.Index.Name}}{{end}}</a></li>
         </div>
         {{ if .Guides }}
             <div class="menu-list-category-wrapper expanded"><div>
@@ -15,7 +15,7 @@
                             {{range .Guides}}
                                 <div><li class="menu-list-link">
                                         <a onclick="fetchContent('{{.Path}}')">
-                                            {{.Name}}
+                                            {{ if .Title }}{{.Title}}{{else}}{{.Name}}{{end}}
                                         </a>
                                     </li></div>
                             {{end}}
@@ -32,7 +32,7 @@
                             {{range .Resources}}
                                 <div><li class="menu-list-link">
                                         <a onclick="fetchContent('{{.Path}}')">
-                                            {{.Name}}
+                                            {{.ShortProviderName}}_{{.Name}}
                                         </a>
                                     </li></div>
                             {{end}}
@@ -49,7 +49,7 @@
                             {{range .Data}}
                                 <div><li class="menu-list-link">
                                         <a onclick="fetchContent('{{.Path}}')">
-                                            {{.Name}}
+                                            {{.ShortProviderName}}_{{.Name}}
                                         </a>
                                     </li></div>
                             {{end}}

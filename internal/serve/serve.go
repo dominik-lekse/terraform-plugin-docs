@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/adrg/frontmatter"
+	"github.com/hashicorp/terraform-plugin-docs/internal/provider"
 	"html/template"
 	"io"
 	"net/http"
@@ -31,27 +33,32 @@ type Menu struct {
 }
 
 type Page struct {
-	Name    string `json:"name"`
-	Content string `json:"content"`
-	Path    string `json:"path"`
+	Name              string `json:"name"`
+	ProviderName      string `json:"providerName"`
+	ShortProviderName string `json:"shortProviderName"`
+	Title             string `json:"title"`
+	Content           string `json:"content"`
+	Path              string `json:"path"`
 }
 
-func Handle(w http.ResponseWriter, r *http.Request) {
-	var err error
-	if r.RequestURI == "/tools/doc-preview" {
-		err = getDocPreviewPage(w)
-	} else if r.RequestURI == "/markdown/menu" {
-		err = getSidebarMenu(w)
-	} else if strings.HasPrefix(r.RequestURI, "/markdown") {
-		err = getMarkdownContent(w, r.RequestURI)
-	} else {
-		proxyRequest(w, r)
-		return
-	}
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
+func NewHandler(providerName string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		if r.RequestURI == "/tools/doc-preview" {
+			err = getDocPreviewPage(w)
+		} else if r.RequestURI == "/markdown/menu" {
+			err = getSidebarMenu(w, providerName)
+		} else if strings.HasPrefix(r.RequestURI, "/markdown") {
+			err = getMarkdownContent(w, r.RequestURI, providerName)
+		} else {
+			proxyRequest(w, r)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	})
 }
 
 func fetchDocPreviewPage() (io.Reader, error) {
@@ -105,7 +112,7 @@ func injectScriptIntoPage(body io.Reader) (io.Reader, error) {
 	return &buffer, nil
 }
 
-func generateMenu() (*Menu, error) {
+func generateMenu(providerName string) (*Menu, error) {
 	menu := &Menu{}
 	err := filepath.Walk("./docs", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -119,7 +126,7 @@ func generateMenu() (*Menu, error) {
 			return nil
 		}
 
-		page, err := readPage(path)
+		page, err := readPage(path, providerName)
 		if err != nil {
 			return err
 		}
@@ -142,7 +149,7 @@ func generateMenu() (*Menu, error) {
 	return menu, nil
 }
 
-func readPage(path string) (*Page, error) {
+func readPage(path string, providerName string) (*Page, error) {
 	path = filepath.Clean(path)
 
 	if !strings.HasSuffix(path, ".md") {
@@ -164,11 +171,25 @@ func readPage(path string) (*Page, error) {
 		return nil, err
 	}
 
+	meta := map[string]string{}
+	_, err = frontmatter.Parse(bytes.NewReader(content.Bytes()), &meta)
+	if err != nil {
+		return nil, err
+	}
+
+	pageTitle := ""
+	if s, hasPageTitle := meta["page_title"]; hasPageTitle {
+		pageTitle = s
+	}
+
 	_, name := filepath.Split(path)
 	return &Page{
-		Name:    name[:strings.Index(name, ".")],
-		Content: content.String(),
-		Path:    path,
+		Name:              name[:strings.Index(name, ".")],
+		ProviderName:      providerName,
+		ShortProviderName: provider.ProviderShortName(providerName),
+		Title:             pageTitle,
+		Content:           content.String(),
+		Path:              path,
 	}, nil
 }
 
@@ -215,8 +236,8 @@ func proxyRequest(w http.ResponseWriter, r *http.Request) {
 	rp.ServeHTTP(w, r)
 }
 
-func getSidebarMenu(w http.ResponseWriter) error {
-	menu, err := generateMenu()
+func getSidebarMenu(w http.ResponseWriter, providerName string) error {
+	menu, err := generateMenu(providerName)
 	if err != nil {
 		return err
 	}
@@ -234,8 +255,8 @@ func getSidebarMenu(w http.ResponseWriter) error {
 	return nil
 }
 
-func getMarkdownContent(w http.ResponseWriter, path string) error {
-	page, err := readPage(strings.TrimPrefix(path, "/markdown/"))
+func getMarkdownContent(w http.ResponseWriter, path string, providerName string) error {
+	page, err := readPage(strings.TrimPrefix(path, "/markdown/"), providerName)
 	if err != nil {
 		return err
 	}

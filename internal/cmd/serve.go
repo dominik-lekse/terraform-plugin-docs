@@ -5,12 +5,17 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-docs/internal/serve"
 	"net/http"
+	"os"
+	"path/filepath"
 )
 
 type serveCmd struct {
 	commonCmd
 
 	addr string
+
+	flagProviderName         string
+	flagRenderedProviderName string
 }
 
 func (cmd *serveCmd) Synopsis() string {
@@ -24,6 +29,7 @@ func (cmd *serveCmd) Help() string {
 func (cmd *serveCmd) Flags() *flag.FlagSet {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	fs.StringVar(&cmd.addr, "addr", "localhost:8080", "listen address")
+	fs.StringVar(&cmd.flagProviderName, "provider-name", "", "provider name, as used in Terraform configurations")
 	return fs
 }
 
@@ -41,7 +47,18 @@ func (cmd *serveCmd) Run(args []string) int {
 func (cmd *serveCmd) runInternal() error {
 	cmd.ui.Info(fmt.Sprintf("Preview docs at http://%s/tools/doc-preview", cmd.addr))
 
-	err := http.ListenAndServe(cmd.addr, http.HandlerFunc(serve.Handle))
+	providerName := cmd.flagProviderName
+	if providerName == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+
+		providerName = filepath.Base(wd)
+	}
+
+	handler := serve.NewHandler(providerName)
+	err := http.ListenAndServe(cmd.addr, handler)
 
 	if err != nil {
 		return fmt.Errorf("unable to validate website: %w", err)
